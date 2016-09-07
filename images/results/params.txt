@@ -1,0 +1,5 @@
+./tp1A.exe satelliteIles.pgm 90 120 35
+./tp1B.exe mixtFourGaussians.pgm 0.1 4
+./tp1C.exe satelliteIles.pgm 1 2
+./tp1D.exe butterfly.pgm 15 30
+./tp1E.exe lena.pgm mask.pgm 10
