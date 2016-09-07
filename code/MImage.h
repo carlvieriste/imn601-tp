@@ -34,6 +34,7 @@ class MImage{
 		/* Constructors/destructor */
 		MImage(void); /* default constructor */
 		MImage(int xs,int ys,int zs); 
+		MImage(int xs, int ys, int zs, int color);
 		MImage(const MImage &copy); /* copy constructor */ 
 		~MImage(void);
 
@@ -65,6 +66,7 @@ class MImage{
 				
 		/* Segmentation */
 		void MMagicWand(int xSeed, int ySeed, float tolerance);
+		void Flood(MImage &yOut, int xSeed, int ySeed, float tolerance, RGBPixel &ref);
 		void MOptimalThresholding(float *means,float *stddev,float *apriori,int nbClasses);
 		void MKMeansSegmentation(float *means,float *stddev,float *apriori,int nbClasses);
 		void MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,float beta,int nbClasses);

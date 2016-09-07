@@ -6,22 +6,36 @@
 #include <vector>
 #include <algorithm>
 
-MImage::MImage(int xs,int ys,int zs)
+MImage::MImage(int xs, int ys, int zs)
 {
 	MXS = 0;
 	MYS = 0;
 	MZS = 0;
-	MImgBuf=NULL;
+	MImgBuf = NULL;
 
-	if(xs>0 && ys>0 && zs>0)
-		MAllocMemory(xs,ys,zs);
+	if (xs>0 && ys>0 && zs>0)
+		MAllocMemory(xs, ys, zs);
 
-	for(int y=0;y<MYS;y++)
-		for(int x=0;x<MXS;x++)
-			MSetColor(0,x,y);
-
-
+	for (int y = 0;y<MYS;y++)
+		for (int x = 0;x<MXS;x++)
+			MSetColor(0, x, y);
 }
+
+MImage::MImage(int xs, int ys, int zs, int color)
+{
+	MXS = 0;
+	MYS = 0;
+	MZS = 0;
+	MImgBuf = NULL;
+
+	if (xs>0 && ys>0 && zs>0)
+		MAllocMemory(xs, ys, zs);
+
+	for (int y = 0;y<MYS;y++)
+		for (int x = 0;x<MXS;x++)
+			MSetColor(color, x, y);
+}
+
 MImage::MImage(void)
 {
 	MXS = 0;
@@ -317,10 +331,31 @@ void MImage::MMeanShift(float SpatialBandWidth, float RangeBandWidth, float tole
 */
 void MImage::MMagicWand(int xSeed, int ySeed, float tolerance)
 {
-
+	MImage y(MXS, MYS, 1, -1);
+	Flood(y, xSeed, ySeed, tolerance, MImgBuf[xSeed][ySeed]);
 }
 
-
+void MImage::Flood(MImage &yOut, int xSeed, int ySeed, float tolerance, RGBPixel &xRef)
+{
+	for (int i = xSeed - 1; i < xSeed + 1; ++i)
+	{
+		for (int j = xSeed - 1; j < xSeed + 1; ++j)
+		{
+			if (i >= 0 && i < MXS && j >= 0 && j < MYS)
+			{
+				if (yOut.MImgBuf[i][j].r < 0 && MImgBuf[i][j].r < xRef.r)
+				{
+					yOut.MImgBuf[i][j].r = 1;
+					Flood(yOut, i, j, tolerance, xRef);
+				}
+				else
+				{
+					yOut.MImgBuf[i][j].r = 0;
+				}
+			}
+		}
+	}
+}
 
 
 
