@@ -344,8 +344,8 @@ void MImage::Flood(MImage &yOut, int xSeed, int ySeed, float tolerance, RGBPixel
 		{
 			if (i >= 0 && i < MXS && j >= 0 && j < MYS)
 			{
-				if (yOut.MImgBuf[i][j].r < 0 &&				// pixel not visited
-					MImgBuf[i][j].r - xRef.r < tolerance)	// in tolerance range
+				if (yOut.MImgBuf[i][j].r < 0 &&							// pixel not visited
+					std::abs(MImgBuf[i][j].r - xRef.r) < tolerance)		// in tolerance range
 				{
 					yOut.MImgBuf[i][j].r = 1;
 					Flood(yOut, i, j, tolerance, xRef);
