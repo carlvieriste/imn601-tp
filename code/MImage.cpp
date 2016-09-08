@@ -333,17 +333,19 @@ void MImage::MMagicWand(int xSeed, int ySeed, float tolerance)
 {
 	MImage y(MXS, MYS, 1, -1);
 	Flood(y, xSeed, ySeed, tolerance, MImgBuf[xSeed][ySeed]);
+	MImgBuf = y.MImgBuf;
 }
 
 void MImage::Flood(MImage &yOut, int xSeed, int ySeed, float tolerance, RGBPixel &xRef)
 {
-	for (int i = xSeed - 1; i < xSeed + 1; ++i)
+	for (int i = xSeed - 1; i < xSeed + 1; i++)
 	{
-		for (int j = xSeed - 1; j < xSeed + 1; ++j)
+		for (int j = xSeed - 1; j < xSeed + 1; j++)
 		{
 			if (i >= 0 && i < MXS && j >= 0 && j < MYS)
 			{
-				if (yOut.MImgBuf[i][j].r < 0 && MImgBuf[i][j].r < xRef.r)
+				if (yOut.MImgBuf[i][j].r < 0 &&				// pixel not visited
+					MImgBuf[i][j].r - xRef.r < tolerance)	// in tolerance range
 				{
 					yOut.MImgBuf[i][j].r = 1;
 					Flood(yOut, i, j, tolerance, xRef);
