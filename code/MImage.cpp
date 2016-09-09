@@ -419,16 +419,15 @@ void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int 
 {
     MImage Y(MXSize(), MYSize(), 1);
     std::vector<int> classSize(nbClasses);
+    float* oldMeans = new float[nbClasses];
 
     // Init average in a uniform manner (instead of random)
     for (int c = 0; c < nbClasses; c++)
         means[c] = float(c) / nbClasses;
 
-    bool labelFieldHasChanged = true;
-    while (labelFieldHasChanged)
+    bool meansHaveChanged = true;
+    while (meansHaveChanged)
     {
-        labelFieldHasChanged = false;
-
         // Set labels
         for (int x = 0; x < MXSize(); x++) {
             for (int y = 0; y < MYSize(); y++) {
@@ -444,19 +443,12 @@ void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int 
                     }
                 }
 
-                // Detect change
-                if (int(Y.MGetColor(x, y)) != closestClass)
-                {
-                    labelFieldHasChanged = true;
-
-                    // Set label of closest average
-                    Y.MSetColor(float(closestClass), x, y);
-                }
+                Y.MSetColor(float(closestClass), x, y);
             }
         }
 
-        if (!labelFieldHasChanged)
-            break;
+        // Keep actual means for comparison
+        memcpy(oldMeans, means, nbClasses * sizeof(float));
 
         // Reset means
         for (int c = 0; c < nbClasses; c++) {
@@ -476,12 +468,23 @@ void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int 
             means[c] /= (classSize[c] == 0 ? 1 : classSize[c]);
         }
 
-        // Sort means for a prettier output
+        // Check if means have changed
+        meansHaveChanged = false;
+        for (int c = 0; c < nbClasses; c++)
+        {
+            float dist = fabsf(means[c] - oldMeans[c]);
+            if (dist > 0.01f)
+            {
+                meansHaveChanged = true;
+            }
+        }
+
+        // Sort means
         std::sort(means, &means[nbClasses - 1]);
 
     } // End of while
 
-    // Copy label field to current this image
+    // Copy label field to this image
     operator=(Y);
 }
 
