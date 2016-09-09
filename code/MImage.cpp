@@ -417,7 +417,72 @@ void MImage::MOptimalThresholding(float *means, float *stddev, float *apriori, i
 */
 void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int nbClasses)
 {
+    MImage Y(MXSize(), MYSize(), 1);
+    std::vector<int> classSize(nbClasses);
 
+    // Init average in a uniform manner (instead of random)
+    for (int c = 0; c < nbClasses; c++)
+        means[c] = float(c) / nbClasses;
+
+    bool labelFieldHasChanged = true;
+    while (labelFieldHasChanged)
+    {
+        labelFieldHasChanged = false;
+
+        // Set labels
+        for (int x = 0; x < MXSize(); x++) {
+            for (int y = 0; y < MYSize(); y++) {
+                int closestClass = -1;
+                float smallestDist = std::numeric_limits<float>::infinity();
+
+                // Check against all averages
+                for (int c = 0; c < nbClasses; c++) {
+                    float dist = fabsf(MGetColor(x, y) - means[c]);
+                    if (dist < smallestDist) {
+                        closestClass = c;
+                        smallestDist = dist;
+                    }
+                }
+
+                // Detect change
+                if (int(Y.MGetColor(x, y)) != closestClass)
+                {
+                    labelFieldHasChanged = true;
+
+                    // Set label of closest average
+                    Y.MSetColor(float(closestClass), x, y);
+                }
+            }
+        }
+
+        if (!labelFieldHasChanged)
+            break;
+
+        // Reset means
+        for (int c = 0; c < nbClasses; c++) {
+            means[c] = 0.0f;
+            classSize[c] = 0;
+        }
+
+        // Compute means
+        for (int x = 0; x < MXSize(); x++) {
+            for (int y = 0; y < MYSize(); y++) {
+                int label = int(Y.MGetColor(x, y));
+                means[label] += MGetColor(x, y);
+                classSize[label] += 1;
+            }
+        }
+        for (int c = 0; c < nbClasses; c++) {
+            means[c] /= (classSize[c] == 0 ? 1 : classSize[c]);
+        }
+
+        // Sort means for a prettier output
+        std::sort(means, &means[nbClasses - 1]);
+
+    } // End of while
+
+    // Copy label field to current this image
+    operator=(Y);
 }
 
 
