@@ -538,6 +538,68 @@ void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int 
 */
 void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,float beta, int nbClasses)
 {
+    const float BETA = 1.0f;
+
+    std::vector<MImage> Y(nbClasses, MImage(MXSize(), MYSize(), 1));
+    std::vector<int> classSize(nbClasses);
+    float* oldMeans = new float[nbClasses];
+    float* exponentialTerms = new float[nbClasses];
+
+    // Init average in a uniform manner (instead of random)
+    for (int c = 0; c < nbClasses; c++)
+        means[c] = float(c) / nbClasses;
+
+    bool meansHaveChanged = true;
+    while (meansHaveChanged)
+    {
+        // Set probabilities
+        for (int x = 0; x < MXSize(); x++)
+        {
+            for (int y = 0; y < MYSize(); y++)
+            {
+                float pixelValue = MGetColor(x, y);
+
+                // Compute all exponential terms and the denominator
+                float denom(0.0f);
+                for (int c = 0; c < nbClasses; c++)
+                {
+                    float d_r = BETA * fabsf(pixelValue - means[c]);
+                    float term = expf(-d_r);
+                    denom += term;
+                    exponentialTerms[c] = term;
+                }
+
+                // Compute probability of being in class c for pixel (x,y)
+                for (int c = 0; c < nbClasses; c++)
+                {
+                    float numer = exponentialTerms[c];
+
+                    float P = numer / denom;
+
+                    Y[c].MSetColor(P, x, y);
+                }
+            }
+        }
+
+        // Compute new means
+        for (int c = 0; c < nbClasses; c++)
+        {
+            float numer(0.0f), denom(0.0f);
+            for (int x = 0; x < MXSize(); x++)
+            {
+                for (int y = 0; y < MYSize(); y++)
+                {
+                    // Get probability that (x,y) belongs to class c
+                    float P = Y[c].MGetColor(x, y);
+
+                    numer += P * MGetColor(x, y);
+                    denom += P;
+                }
+            }
+
+            means[c] = numer / denom;
+        }
+    }
 }
 
 
