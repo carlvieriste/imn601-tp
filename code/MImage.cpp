@@ -6,22 +6,36 @@
 #include <vector>
 #include <algorithm>
 
-MImage::MImage(int xs,int ys,int zs)
+MImage::MImage(int xs, int ys, int zs)
 {
 	MXS = 0;
 	MYS = 0;
 	MZS = 0;
-	MImgBuf=NULL;
+	MImgBuf = NULL;
 
-	if(xs>0 && ys>0 && zs>0)
-		MAllocMemory(xs,ys,zs);
+	if (xs>0 && ys>0 && zs>0)
+		MAllocMemory(xs, ys, zs);
 
-	for(int y=0;y<MYS;y++)
-		for(int x=0;x<MXS;x++)
-			MSetColor(0,x,y);
-
-
+	for (int y = 0;y<MYS;y++)
+		for (int x = 0;x<MXS;x++)
+			MSetColor(0, x, y);
 }
+
+MImage::MImage(int xs, int ys, int zs, float color)
+{
+	MXS = 0;
+	MYS = 0;
+	MZS = 0;
+	MImgBuf = NULL;
+
+	if (xs>0 && ys>0 && zs>0)
+		MAllocMemory(xs, ys, zs);
+
+	for (int y = 0;y<MYS;y++)
+		for (int x = 0;x<MXS;x++)
+			MSetColor(color, x, y);
+}
+
 MImage::MImage(void)
 {
 	MXS = 0;
@@ -317,13 +331,42 @@ void MImage::MMeanShift(float SpatialBandWidth, float RangeBandWidth, float tole
 */
 void MImage::MMagicWand(int xSeed, int ySeed, float tolerance)
 {
+	MImage Y(MXS, MYS, 1, -1.0f);
+	Flood(Y, xSeed, ySeed, tolerance, MImgBuf[xSeed][ySeed]);
 
+    // Output segmentation result in the image
+    for (int x = 0; x < MXS; x++)
+    {
+        for (int y = 0; y < MYS; y++)
+        {
+            float grayLevel = float(Y.MGetColor(x, y) > 0.0f) * 255.0f; // Convert boolean result to float
+            MSetColor(grayLevel, x, y);
+        }
+    }
 }
 
+void MImage::Flood(MImage &yOut, int xSeed, int ySeed, float tolerance, RGBPixel &xRef)
+{
+	for (int x = xSeed - 1; x <= xSeed + 1; x++)
+	{
+		for (int y = ySeed - 1; y <= ySeed + 1; y++)
+		{
+			// Check coord is inside image AND pixel not visited
+            if (x < 0 || x >= MXS || y < 0 || y >= MYS || yOut.MGetColor(x, y) > -1.0f)
+                continue;
 
-
-
-
+            if (fabsf(MGetColor(x, y) - xRef.r) < tolerance) // Check inside range
+            {
+                yOut.MSetColor(1.0f, x, y);
+                Flood(yOut, x, y, tolerance, xRef);
+            }
+            else
+            {
+                yOut.MSetColor(0.0f, x, y);
+            }
+		}
+	}
+}
 
 /*
 	N-class segmentation.  Each class is a Gaussian function defined by
