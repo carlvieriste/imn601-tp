@@ -423,11 +423,14 @@ void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int 
 
     // Init average in a uniform manner (instead of random)
     for (int c = 0; c < nbClasses; c++)
-        means[c] = float(c) / nbClasses;
+        means[c] = float(c) / nbClasses * 255.0f;
 
     bool meansHaveChanged = true;
+    int iter(0);
     while (meansHaveChanged)
     {
+        iter++;
+
         // Set labels
         for (int x = 0; x < MXSize(); x++) {
             for (int y = 0; y < MYSize(); y++) {
@@ -522,6 +525,8 @@ void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int 
 
         apriori[c] = float(classSize[c]) / totalPixels;
     }
+
+    printf("Iter: %i", iter);
 
     // Copy label field to this image
     operator=(Y);
