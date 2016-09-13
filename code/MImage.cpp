@@ -547,16 +547,19 @@ void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,f
 
     std::vector<MImage> Y(nbClasses, MImage(MXSize(), MYSize(), 1));
     std::vector<int> classSize(nbClasses);
-    float* oldMeans = new float[nbClasses];
+    MImage bestClassForSite(MXSize(), MYSize(), 1);
     float* exponentialTerms = new float[nbClasses];
 
     // Init average in a uniform manner (instead of random)
     for (int c = 0; c < nbClasses; c++)
-        means[c] = float(c) / nbClasses;
+        means[c] = float(c) / nbClasses * 255.0f;
 
     bool meansHaveChanged = true;
+    int iter(0);
     while (meansHaveChanged)
     {
+        iter++;
+
         // Set probabilities
         for (int x = 0; x < MXSize(); x++)
         {
@@ -575,6 +578,9 @@ void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,f
                 }
 
                 // Compute probability of being in class c for pixel (x,y)
+                // Update label field using highest probability class
+                float highestProb = 0.0f;
+                int bestClass = 0;
                 for (int c = 0; c < nbClasses; c++)
                 {
                     float numer = exponentialTerms[c];
@@ -582,11 +588,19 @@ void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,f
                     float P = numer / denom;
 
                     Y[c].MSetColor(P, x, y);
+
+                    if (P > highestProb)
+                    {
+                        highestProb = P;
+                        bestClass = c;
+                    }
                 }
+                bestClassForSite.MSetColor(float(bestClass), x, y);
             }
         }
 
         // Compute new means
+        meansHaveChanged = false;
         for (int c = 0; c < nbClasses; c++)
         {
             float numer(0.0f), denom(0.0f);
@@ -602,9 +616,17 @@ void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,f
                 }
             }
 
-            means[c] = numer / denom;
+            float newMean = numer / denom;
+            if (fabsf(newMean - means[c]) > 0.01)
+                meansHaveChanged = true;
+            means[c] = newMean;
         }
     }
+
+    printf("Iter: %i", iter);
+
+    // Copy label field in this image
+    operator=(bestClassForSite);
 }
 
 
