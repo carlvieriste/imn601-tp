@@ -484,27 +484,6 @@ void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int 
 
     } // End of while
 
-    // Sort labels for a prettier output (optional)
-    std::vector<int> sortedIndices(nbClasses);
-    std::size_t n(0);
-    std::generate(std::begin(sortedIndices), std::end(sortedIndices), [&]{ return n++; });
-    auto compare_means = [&](int i1, int i2) { return means[i1] < means[i2]; };
-    std::sort(std::begin(sortedIndices), std::end(sortedIndices), compare_means); // Get indices of sorted means
-    std::sort(means, &means[nbClasses]); // Sort actual means
-    for (int x = 0; x < MXSize(); x++) // Update label field to reflect the change
-    {
-        for (int y = 0; y < MYSize(); y++)
-        {
-            int c = int(Y.MGetColor(x, y));
-            Y.MSetColor(float(sortedIndices[c]), x, y);
-        }
-    }
-    auto oldSizes = classSize;
-    for (int c = 0; c < nbClasses; c++) // Update vector containing the size of each class
-    {
-        classSize[c] = oldSizes[sortedIndices[c]];
-    }
-
     // Compute variance
     std::fill(stddev, stddev + nbClasses, 0.0f);
     for (int x = 0; x < MXSize(); x++)
