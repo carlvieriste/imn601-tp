@@ -642,6 +642,77 @@ void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,f
 */
 void MImage::MExpectationMaximization(float *means,float *stddev,float *apriori, int nbClasses)
 {
+    const float NORM_CONSTANT = 1.0f / sqrtf(2.0f * M_PI);
+    const float ONE_OVER_NUM_SITES = 1.0f / (MXSize() * MYSize());
+    std::vector<float> gaussianProbability(nbClasses);
+    std::vector<MImage> P(nbClasses, MImage(MXSize(), MYSize(), 1)); // Contains P(c | x_s)
+    auto are_different = [](float a, float b, float eps) -> bool{
+        return fabsf(a - b) > eps;
+    };
+
+    bool paramsHaveChanged = true;
+    while (paramsHaveChanged)
+    {
+        // 1. Compute P(c | x_s, theta) for all pixels and all classes
+        for (int x = 0; x < MXSize(); x++)
+        {
+            for (int y = 0; y < MYSize(); y++)
+            {
+                float x_s = MGetColor(x, y);
+
+                // 1.a Compute P(x_s | i, theta_i) * P(i) for each class i (and sum them all)
+                float probSum(0.0f);
+                for (int c = 0; c < nbClasses; c++)
+                {
+                    float conditionalProb = NORM_CONSTANT / stddev[c]
+                                          * expf(-1.0f * powf(x_s - means[c], 2.0f) / (2.0f * powf(stddev[c], 2.0f)));
+                    probSum += gaussianProbability[c] = conditionalProb * apriori[c];
+                }
+
+                // 2.a Compute P(c | x_s, theta) for all classes
+                for (int c = 0; c < nbClasses; c++)
+                {
+                    P[c].MSetColor(gaussianProbability[c] / probSum, x, y);
+                }
+            }
+        }
+
+        // 2. Compute gaussian parameters
+        paramsHaveChanged = false;
+        for (int c = 0; c < nbClasses; c++)
+        {
+            float meanNumer(0.0f), varianceNumer(0.0f), sumOfCondProbs(0.0f);
+            for (int x = 0; x < MXSize(); x++)
+            {
+                for (int y = 0; y < MYSize(); y++)
+                {
+                    float x_s = MGetColor(x, y);
+                    float conditionalProb = P[c].MGetColor(x, y);
+
+                    sumOfCondProbs += conditionalProb; // This is the denom for both the mean and the variance
+
+                    meanNumer += conditionalProb * x_s;
+                    varianceNumer += conditionalProb * powf(x_s - means[c], 2.0f);
+                }
+            }
+
+            float newMean = meanNumer / sumOfCondProbs;
+            float newStddev = sqrtf(varianceNumer / sumOfCondProbs);
+            float newApriori = ONE_OVER_NUM_SITES * sumOfCondProbs;
+
+            if (   are_different(newMean, means[c], 0.1f)
+                || are_different(newStddev, stddev[c], 0.1f)
+                || are_different(newApriori, apriori[c], 0.1f))
+            {
+                paramsHaveChanged = true;
+            }
+
+            means[c] = newMean;
+            stddev[c] = newStddev;
+            apriori[c] = newApriori;
+        }
+
+    } // End of while
 }
 
 /*
