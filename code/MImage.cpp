@@ -719,6 +719,80 @@ void MImage::MICMSegmentation(float beta, int nbClasses)
 */
 void MImage::MSASegmentation(float beta,float Tmin, float Tmax, float coolingRate, int nbClasses)
 {
+    const float NORM_CONSTANT = 1.0f / sqrtf(2.0f * M_PI);
+    const int xNeigh[] = {-1, 0, 1, -1, 1, -1, 0, 1};
+    const int yNeigh[] = {-1, -1, -1, 0, 0, 1, 1, 1};
+    auto are_different = [](float a, float b, float eps) -> bool{
+        return fabsf(a - b) > eps;
+    };
+
+    float means[nbClasses];
+    float stddev[nbClasses];
+    float apriori[nbClasses]; // Will not be used, we give it to the KMeans function
+    float T = Tmax;
+    float P[nbClasses];
+
+    // Initialize label field and parameters
+    MImage Y = *this;
+    Y.MKMeansSegmentation(means, stddev, apriori, nbClasses);
+
+    do
+    {
+        for (int x = 0; x < MXSize(); x++)
+        {
+            for (int y = 0; y < MYSize(); y++)
+            {
+                float x_s = MGetColor(x, y);
+
+                // 1. Compute probability for each class
+                float sumOfP(0.0f);
+                for (int c = 0; c < nbClasses; c++)
+                {
+                    // U_c = -Gauss(x_s ; means[c], stddev[c])
+                    float U_c = -1.0f * NORM_CONSTANT / stddev[c] * expf(-0.5f * powf((x_s - means[c]) / stddev[c], 2.0f));
+
+                    // W_c = Beta * (num different class neighbors)
+                    int diffNeighbors(0);
+                    for(int n = 0; n < 8; n++) // 8 neighbors
+                    {
+                        int xn = x + xNeigh[n];
+                        int yn = y + yNeigh[n];
+                        if (xn < 0 || yn < 0 || xn >= MXSize() || yn >= MYSize())
+                            continue;
+                        if (are_different(Y.MGetColor(xn, yn), Y.MGetColor(x, y), 0.5f)) // Since we're comparing class
+                            diffNeighbors += 1;                                          // indices, should be integers
+                    }
+                    float W_c = beta * diffNeighbors;
+
+                    P[c] = expf(-1.0f * (U_c + W_c) / T);
+                    sumOfP += P[c];
+                }
+
+                float p = std::rand() / RAND_MAX; // Random float in [0,1]
+                int chosenClass(-1);
+                float sumOfPreviousP(0.0f);
+
+                // 2. Normalize P's so that their sum is 1
+                for (int c = 0; c < nbClasses; c++)
+                {
+                    P[c] /= sumOfP;
+
+                    if (p < sumOfPreviousP + P[c])
+                    {
+                        chosenClass = c;
+                        break;
+                    }
+                    sumOfPreviousP += P[c];
+                }
+
+                Y.MSetColor(float(chosenClass), x, y);
+            }
+        }
+        T = T * coolingRate;
+    } while (T > Tmin);
+
+    // Copy label field in the current instance
+    operator=(Y);
 }
 
 
