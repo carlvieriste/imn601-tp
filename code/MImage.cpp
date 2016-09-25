@@ -419,7 +419,7 @@ void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int 
 {
     MImage Y(MXSize(), MYSize(), 1);
     std::vector<int> classSize(nbClasses);
-    float oldMeans[nbClasses];
+    float* oldMeans = new float[nbClasses];
 
     // Init average in a uniform manner (instead of random)
     for (int c = 0; c < nbClasses; c++)
@@ -509,6 +509,8 @@ void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int 
 
     // Copy label field to this image
     operator=(Y);
+
+    delete[] oldMeans;
 }
 
 
@@ -527,7 +529,7 @@ void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,f
     std::vector<MImage> Y(nbClasses, MImage(MXSize(), MYSize(), 1));
     std::vector<int> classSize(nbClasses);
     MImage bestClassForSite(MXSize(), MYSize(), 1);
-    float exponentialTerms[nbClasses];
+    float* exponentialTerms = new float[nbClasses];
 
     // Init average in a uniform manner (instead of random)
     for (int c = 0; c < nbClasses; c++)
@@ -606,6 +608,8 @@ void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,f
 
     // Copy label field in this image
     operator=(bestClassForSite);
+
+    delete[] exponentialTerms;
 }
 
 
@@ -729,11 +733,11 @@ void MImage::MSASegmentation(float beta,float Tmin, float Tmax, float coolingRat
         return fabsf(a - b) > eps;
     };
 
-    float means[nbClasses];
-    float stddev[nbClasses];
-    float apriori[nbClasses]; // Will not be used, we give it to the KMeans function
+    float* means = new float[nbClasses];
+    float* stddev = new float[nbClasses];
+    float* apriori = new float[nbClasses]; // Will not be used, we give it to the KMeans function
     float T = Tmax;
-    double P[nbClasses];
+    double* P = new double[nbClasses];
 
     // Initialize label field and parameters
     MImage Y = *this;
@@ -817,6 +821,11 @@ void MImage::MSASegmentation(float beta,float Tmin, float Tmax, float coolingRat
 
     // Copy label field in the current instance
     operator=(Y);
+
+    delete[] means;
+    delete[] stddev;
+    delete[] apriori;
+    delete[] P;
 }
 
 
