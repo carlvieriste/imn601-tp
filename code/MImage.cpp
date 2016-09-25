@@ -505,7 +505,7 @@ void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int 
         apriori[c] = float(classSize[c]) / totalPixels;
     }
 
-    printf("Iter: %i", iter);
+    printf("Iter: %i\n", iter);
 
     // Copy label field to this image
     operator=(Y);
@@ -723,8 +723,8 @@ void MImage::MICMSegmentation(float beta, int nbClasses)
 void MImage::MSASegmentation(float beta,float Tmin, float Tmax, float coolingRate, int nbClasses)
 {
     const float NORM_CONSTANT = 1.0f / sqrtf(2.0f * M_PI);
-    const int xNeigh[] = {-1, 0, 1, -1, 1, -1, 0, 1};
-    const int yNeigh[] = {-1, -1, -1, 0, 0, 1, 1, 1};
+    const int xNeigh[] = {-1,  0,  1, -1, 1, -1, 0, 1};
+    const int yNeigh[] = {-1, -1, -1,  0, 0,  1, 1, 1};
     auto are_different = [](float a, float b, float eps) -> bool{
         return fabsf(a - b) > eps;
     };
@@ -733,12 +733,25 @@ void MImage::MSASegmentation(float beta,float Tmin, float Tmax, float coolingRat
     float stddev[nbClasses];
     float apriori[nbClasses]; // Will not be used, we give it to the KMeans function
     float T = Tmax;
-    float P[nbClasses];
+    double P[nbClasses];
 
     // Initialize label field and parameters
     MImage Y = *this;
     Y.MKMeansSegmentation(means, stddev, apriori, nbClasses);
 
+    MImage debug = Y;
+    debug.MRescale();
+    debug.MSaveImage("SAInitKMeans.pgm", PGM_ASCII);
+
+    for (int x = 0; x < MXSize(); x++)
+    {
+        for (int y = 0; y < MYSize(); y++)
+        {
+            Y.MSetColor(roundf(float(std::rand()) / RAND_MAX * (nbClasses - 1)), x, y);
+        }
+    }
+
+    int idebug(0);
     do
     {
         for (int x = 0; x < MXSize(); x++)
@@ -748,11 +761,11 @@ void MImage::MSASegmentation(float beta,float Tmin, float Tmax, float coolingRat
                 float x_s = MGetColor(x, y);
 
                 // 1. Compute probability for each class
-                float sumOfP(0.0f);
+                double sumOfP(0.0f);
                 for (int c = 0; c < nbClasses; c++)
                 {
                     // U_c = -Gauss(x_s ; means[c], stddev[c])
-                    float U_c = -1.0f * NORM_CONSTANT / stddev[c] * expf(-0.5f * powf((x_s - means[c]) / stddev[c], 2.0f));
+                    float U_c = -1.0f * expf(-0.5f * powf((x_s - means[c]) / stddev[c], 2.0f));
 
                     // W_c = Beta * (num different class neighbors)
                     int diffNeighbors(0);
@@ -767,28 +780,36 @@ void MImage::MSASegmentation(float beta,float Tmin, float Tmax, float coolingRat
                     }
                     float W_c = beta * diffNeighbors;
 
-                    P[c] = expf(-1.0f * (U_c + W_c) / T);
+                    P[c] = exp(-1.0f * (U_c + W_c) / T);
                     sumOfP += P[c];
                 }
 
-                float p = std::rand() / RAND_MAX; // Random float in [0,1]
-                int chosenClass(-1);
-                float sumOfPreviousP(0.0f);
+                // 2. Choose a class
+                double p = double(std::rand()) / RAND_MAX; // Random number in [0,1]
+                double sumOfPreviousP(0.0f);
 
-                // 2. Normalize P's so that their sum is 1
-                for (int c = 0; c < nbClasses; c++)
+                bool showDebug = false; // = idebug % 1000000 == 0;
+                if(showDebug) std::cout << std::endl;
+
+                int c(0);
+                for (; c < nbClasses; c++)
                 {
-                    P[c] /= sumOfP;
+                    if(showDebug) std::cout << P[c] << " ";
+
+                    P[c] /= sumOfP; // Normalize P's so that their sum is 1
+
+                    if(showDebug) std::cout << P[c] << " " << sumOfPreviousP << " " << P[c] + sumOfPreviousP << " " << p << std::endl;
 
                     if (p < sumOfPreviousP + P[c])
                     {
-                        chosenClass = c;
                         break;
                     }
                     sumOfPreviousP += P[c];
                 }
+                c = std::min(c, nbClasses-1);
+                Y.MSetColor(float(c), x, y);
 
-                Y.MSetColor(float(chosenClass), x, y);
+                idebug++;
             }
         }
         T = T * coolingRate;
