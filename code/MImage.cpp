@@ -415,9 +415,102 @@ void MImage::MOptimalThresholding(float *means, float *stddev, float *apriori, i
 
 	The resulting label Field is copied in the current image (this->MImgBuf)
 */
-void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int nbClasses)
+void MImage::MKMeansSegmentation(float *means, float *stddev, float *apriori, int nbClasses)
 {
+	MImage Y(MXSize(), MYSize(), 1);
+	std::vector<int> classSize(nbClasses);
+	float* oldMeans = new float[nbClasses];
 
+	// Init average in a uniform manner (instead of random)
+	for (int c = 0; c < nbClasses; c++)
+		means[c] = float(c) / nbClasses * 255.0f;
+
+	bool meansHaveChanged = true;
+	int iter(0);
+	while (meansHaveChanged)
+	{
+		iter++;
+
+		// Set labels
+		for (int x = 0; x < MXSize(); x++) {
+			for (int y = 0; y < MYSize(); y++) {
+				int closestClass = -1;
+				float smallestDist = std::numeric_limits<float>::infinity();
+
+				// Check against all averages
+				for (int c = 0; c < nbClasses; c++) {
+					float dist = fabsf(MGetColor(x, y) - means[c]);
+					if (dist < smallestDist) {
+						closestClass = c;
+						smallestDist = dist;
+					}
+				}
+
+				Y.MSetColor(float(closestClass), x, y);
+			}
+		}
+
+		// Keep actual means for comparison
+		memcpy(oldMeans, means, nbClasses * sizeof(float));
+
+		// Reset means
+		for (int c = 0; c < nbClasses; c++) {
+			means[c] = 0.0f;
+			classSize[c] = 0;
+		}
+
+		// Compute means
+		for (int x = 0; x < MXSize(); x++) {
+			for (int y = 0; y < MYSize(); y++) {
+				int label = int(Y.MGetColor(x, y));
+				means[label] += MGetColor(x, y);
+				classSize[label] += 1;
+			}
+		}
+		for (int c = 0; c < nbClasses; c++) {
+			means[c] /= (classSize[c] == 0 ? 1 : classSize[c]);
+		}
+
+		// Check if means have changed
+		meansHaveChanged = false;
+		for (int c = 0; c < nbClasses; c++)
+		{
+			float dist = fabsf(means[c] - oldMeans[c]);
+			if (dist > 0.01f)
+			{
+				meansHaveChanged = true;
+			}
+		}
+
+	} // End of while
+
+	  // Compute variance
+	std::fill(stddev, stddev + nbClasses, 0.0f);
+	for (int x = 0; x < MXSize(); x++)
+	{
+		for (int y = 0; y < MYSize(); y++)
+		{
+			int c = int(Y.MGetColor(x, y));
+			stddev[c] += pow(MGetColor(x, y) - means[c], 2.0f);
+		}
+	}
+
+	float totalPixels = MXSize() * MYSize();
+
+	// Get standard deviation and 'a priori'
+	for (int c = 0; c < nbClasses; c++)
+	{
+		stddev[c] = sqrtf(stddev[c] / classSize[c]);
+
+		apriori[c] = float(classSize[c]) / totalPixels;
+	}
+
+	printf("Iter: %i", iter);
+
+	// Copy label field to this image
+	operator=(Y);
+
+	delete oldMeans;
 }
 
 
@@ -458,6 +551,57 @@ void MImage::MExpectationMaximization(float *means,float *stddev,float *apriori,
 */
 void MImage::MICMSegmentation(float beta, int nbClasses)
 {
+	bool ValueChanged;
+	MImage Yprev;
+	MImage Y = *this;
+	float* means = new float[nbClasses];
+	float* stdev = new float[nbClasses];
+	float* apriori = new float[nbClasses];
+	Y.MKMeansSegmentation(means, stdev, apriori, nbClasses);
+	do
+	{
+		ValueChanged = false;
+		Yprev = Y;
+		for (int i = 0; i < MXSize(); i++)
+		{
+			for (int j = 0; j < MYSize(); j++)
+			{
+				int NearestClass = -1;
+				float max = 0.0f;
+				for (int c = 0; c < nbClasses; c++)
+				{
+					float Uc = -std::log(std::exp(-std::pow(MGetColor(i, j) - means[c], 2.0f) / (2.0*std::pow(stdev[c], 2.0))) / (stdev[c] * std::sqrt(2.0f*M_PI)));
+					float Wc = 0.0f;
+					for (int m = -1; m <= 1; m++)
+					{
+						for (int n = -1; n <= 1; n++)
+						{
+							if (i + m >= 0 && i + m < MXS && j + n >= 0 && j + n < MYS)
+							{
+								Wc += Y.MGetColor(i + m, j + n) == c ? 1 : 0;
+							}
+						}
+					}
+					Wc *= beta;
+
+					if (Uc + Wc > max)
+					{
+						max = Uc + Wc;
+						NearestClass = c;
+					}
+				}
+
+				ValueChanged |= (std::abs(NearestClass - Y.MGetColor(i, j)) > 1e-5);
+				Y.MSetColor(NearestClass, i, j);
+			}
+		}
+	} while (ValueChanged);
+
+	operator=(Y);
+
+	delete means;
+	delete stdev;
+	delete apriori;
 }
 
 /*
