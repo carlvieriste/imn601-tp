@@ -419,7 +419,7 @@ void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int 
 {
     MImage Y(MXSize(), MYSize(), 1);
     std::vector<int> classSize(nbClasses);
-    float oldMeans[nbClasses];
+    float* oldMeans = new float[nbClasses];
 
     // Init average in a uniform manner (instead of random)
     for (int c = 0; c < nbClasses; c++)
@@ -509,6 +509,8 @@ void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int 
 
     // Copy label field to this image
     operator=(Y);
+
+    delete[] oldMeans;
 }
 
 
@@ -527,7 +529,7 @@ void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,f
     std::vector<MImage> Y(nbClasses, MImage(MXSize(), MYSize(), 1));
     std::vector<int> classSize(nbClasses);
     MImage bestClassForSite(MXSize(), MYSize(), 1);
-    float exponentialTerms[nbClasses];
+    float* exponentialTerms = new float[nbClasses];
 
     // Init average in a uniform manner (instead of random)
     for (int c = 0; c < nbClasses; c++)
@@ -606,6 +608,8 @@ void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,f
 
     // Copy label field in this image
     operator=(bestClassForSite);
+
+    delete[] exponentialTerms;
 }
 
 
