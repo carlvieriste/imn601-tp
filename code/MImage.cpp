@@ -692,6 +692,9 @@ void MImage::MExpectationMaximization(float *means,float *stddev,float *apriori,
         }
 
     } // End of while
+
+    // NOTE: The label field is not copied in the current image.
+    // The label field is computed using Optimal Thresholding. (See tp1B.cpp)
 }
 
 /*
