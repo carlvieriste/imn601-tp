@@ -567,10 +567,10 @@ void MImage::MICMSegmentation(float beta, int nbClasses)
 			for (int j = 0; j < MYSize(); j++)
 			{
 				int NearestClass = -1;
-				float max = 0.0f;
+				float min = std::numeric_limits<float>::infinity();
 				for (int c = 0; c < nbClasses; c++)
 				{
-					float Uc = -std::log(std::exp(-std::pow(MGetColor(i, j) - means[c], 2.0f) / (2.0*std::pow(stdev[c], 2.0))) / (stdev[c] * std::sqrt(2.0f*M_PI)));
+                    float Uc = -log(exp(-pow(MGetColor(i, j) - means[c], 2.0f) / (2.0*pow(stdev[c], 2.0))) / (stdev[c] * sqrt(2.0f*M_PI)));
 					float Wc = 0.0f;
 					for (int m = -1; m <= 1; m++)
 					{
@@ -578,20 +578,20 @@ void MImage::MICMSegmentation(float beta, int nbClasses)
 						{
 							if (i + m >= 0 && i + m < MXS && j + n >= 0 && j + n < MYS)
 							{
-								Wc += Y.MGetColor(i + m, j + n) == c ? 1 : 0;
+								Wc += Y.MGetColor(i + m, j + n) != c ? 1 : 0;
 							}
 						}
 					}
 					Wc *= beta;
 
-					if (Uc + Wc > max)
+					if (Uc + Wc < min)
 					{
-						max = Uc + Wc;
+						min = Uc + Wc;
 						NearestClass = c;
 					}
 				}
 
-				ValueChanged |= (std::abs(NearestClass - Y.MGetColor(i, j)) > 1e-5);
+				ValueChanged |= (fabsf(NearestClass - Y.MGetColor(i, j)) > 1e-5);
 				Y.MSetColor(NearestClass, i, j);
 			}
 		}
