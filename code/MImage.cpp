@@ -327,23 +327,21 @@ void MImage::MMeanShift(float SpatialBandWidth, float RangeBandWidth, float tole
         sum[2] /= value;
     };
     auto vec3Equal = [&sqdist](std::array<float, 3>& v1, std::array<float, 3>& v2) -> bool {
-        return sqdist(v1[0], v1[1], v1[2], v2[0], v2[1], v2[2]) < std::numeric_limits<float>::epsilon();
+        return sqdist(v1[0], v1[1], v1[2], v2[0], v2[1], v2[2]) < 1.0f;
     };
 
     std::array<float, 3> mean, newMean;
     MImage Y(MXSize(), MYSize(), 1);
-    int avgNum(0), avgIter(0);
 
     // For each pixel, start at the position of the pixel and move to the nearest density maximum
-    for (int x = 192; x < MXSize(); ++x)
+    for (int x = 0; x < MXSize(); ++x)
     {
         std::cout << "Col " << x << std::endl;
         for (int y = 0; y < MYSize(); ++y)
         {
             mean = {float(x), float(y), MGetColor(x, y) * RangeBandWidth};
             // Move the position until it stabilizes
-            int iter(0), totalNum(0);
-            for (;; iter++)
+            for (;;)
             {
                 // Move the position to the mean of the window
                 newMean = {0.0f, 0.0f, 0.0f};
@@ -365,18 +363,11 @@ void MImage::MMeanShift(float SpatialBandWidth, float RangeBandWidth, float tole
                 if (vec3Equal(mean, newMean))
                     break;
                 mean = newMean;
-
-                totalNum += num;
             }
             // Set pixel in "label field" to the color of the density maximum
-            Y.MSetColor(mean[2], x, y);
-
-            avgIter += iter;
-            avgNum += totalNum / (iter+1);
+            Y.MSetColor(mean[2] / RangeBandWidth, x, y);
         }
     }
-    avgIter /= (64 * 256);
-    std::cout << "avgIter: " << avgIter << "  avgNum: " << avgNum << std::endl;
 
     operator=(Y);
 }
