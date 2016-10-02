@@ -768,10 +768,8 @@ void MImage::MSASegmentation(float beta,float Tmin, float Tmax, float coolingRat
                 double sumOfP(0.0f);
                 for (int c = 0; c < nbClasses; c++)
                 {
-                    // U_c = -Gauss(x_s ; means[c], stddev[c])
-                    float U_c = -1.0f * expf(-0.5f * powf((x_s - means[c]) / stddev[c], 2.0f));
+                    float U_c = 0.5f * powf((x_s - means[c]) / stddev[c], 2.0f);
 
-                    // W_c = Beta * (num different class neighbors)
                     int diffNeighbors(0);
                     for(int n = 0; n < 8; n++) // 8 neighbors
                     {
@@ -779,8 +777,8 @@ void MImage::MSASegmentation(float beta,float Tmin, float Tmax, float coolingRat
                         int yn = y + yNeigh[n];
                         if (xn < 0 || yn < 0 || xn >= MXSize() || yn >= MYSize())
                             continue;
-                        if (are_different(Y.MGetColor(xn, yn), Y.MGetColor(x, y), 0.5f)) // Since we're comparing class
-                            diffNeighbors += 1;                                          // indices, should be integers
+                        if (are_different(Y.MGetColor(xn, yn), Y.MGetColor(x, y), 0.5f)) // We compare "integers"
+                            diffNeighbors += 1;
                     }
                     float W_c = beta * diffNeighbors;
 
