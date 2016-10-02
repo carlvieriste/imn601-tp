@@ -4,6 +4,7 @@
 #include "math.h"
 #include "gc/GCoptimization.h"
 #include <vector>
+#include <array>
 #include <algorithm>
 
 MImage::MImage(int xs, int ys, int zs)
@@ -299,7 +300,7 @@ void MImage::MRescale(void)
 
 
 
-
+#define SQR(x) ((x)*(x))
 /*
 	Mean shift filtering
 	
@@ -312,7 +313,72 @@ void MImage::MRescale(void)
 */
 void MImage::MMeanShift(float SpatialBandWidth, float RangeBandWidth, float tolerance)
 {
+    auto sqdist = [](float x, float y, float z, float u, float v, float w) -> float {
+        return SQR(x - u) + SQR(y - v) + SQR(z - w);
+    };
+    auto vec3Add = [](std::array<float, 3>& sum, float x, float y, float z) -> void {
+        sum[0] += x;
+        sum[1] += y;
+        sum[2] += z;
+    };
+    auto vec3Div = [](std::array<float, 3>& sum, float value) -> void {
+        sum[0] /= value;
+        sum[1] /= value;
+        sum[2] /= value;
+    };
+    auto vec3Equal = [&sqdist](std::array<float, 3>& v1, std::array<float, 3>& v2) -> bool {
+        return sqdist(v1[0], v1[1], v1[2], v2[0], v2[1], v2[2]) < std::numeric_limits<float>::epsilon();
+    };
 
+    std::array<float, 3> mean, newMean;
+    MImage Y(MXSize(), MYSize(), 1);
+    int avgNum(0), avgIter(0);
+
+    // For each pixel, start at the position of the pixel and move to the nearest density maximum
+    for (int x = 192; x < MXSize(); ++x)
+    {
+        std::cout << "Col " << x << std::endl;
+        for (int y = 0; y < MYSize(); ++y)
+        {
+            mean = {float(x), float(y), MGetColor(x, y) * RangeBandWidth};
+            // Move the position until it stabilizes
+            int iter(0), totalNum(0);
+            for (;; iter++)
+            {
+                // Move the position to the mean of the window
+                newMean = {0.0f, 0.0f, 0.0f};
+                int num(0);
+                for (int u = 0; u < MXSize(); ++u)
+                {
+                    for (int v = 0; v < MYSize(); ++v)
+                    {
+                        float uvColor = MGetColor(u, v) * RangeBandWidth;
+                        float epanechnikov = sqdist(mean[0], mean[1], mean[2], u, v, uvColor) / SQR(SpatialBandWidth);
+                        if (epanechnikov < 1.0f)
+                        {
+                            vec3Add(newMean, u, v, uvColor);
+                            num += 1;
+                        }
+                    }
+                }
+                vec3Div(newMean, num);
+                if (vec3Equal(mean, newMean))
+                    break;
+                mean = newMean;
+
+                totalNum += num;
+            }
+            // Set pixel in "label field" to the color of the density maximum
+            Y.MSetColor(mean[2], x, y);
+
+            avgIter += iter;
+            avgNum += totalNum / (iter+1);
+        }
+    }
+    avgIter /= (64 * 256);
+    std::cout << "avgIter: " << avgIter << "  avgNum: " << avgNum << std::endl;
+
+    operator=(Y);
 }
 /* =================================================================================
 ====================================================================================
