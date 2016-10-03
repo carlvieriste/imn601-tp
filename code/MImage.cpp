@@ -5,7 +5,12 @@
 #include "gc/GCoptimization.h"
 #include <vector>
 #include <array>
+#include <list>
 #include <algorithm>
+
+using std::vector;
+using std::array;
+using std::list;
 
 MImage::MImage(int xs, int ys, int zs)
 {
@@ -301,6 +306,7 @@ void MImage::MRescale(void)
 
 
 #define SQR(x) ((x)*(x))
+typedef std::list<array<float, 3>> cell_t;
 /*
 	Mean shift filtering
 	
@@ -313,6 +319,7 @@ void MImage::MRescale(void)
 */
 void MImage::MMeanShift(float SpatialBandWidth, float RangeBandWidth, float tolerance)
 {
+    // Utility lambda functions
     auto sqdist = [](float x, float y, float z, float u, float v, float w) -> float {
         return SQR(x - u) + SQR(y - v) + SQR(z - w);
     };
@@ -329,8 +336,60 @@ void MImage::MMeanShift(float SpatialBandWidth, float RangeBandWidth, float tole
     auto vec3Equal = [&sqdist](std::array<float, 3>& v1, std::array<float, 3>& v2) -> bool {
         return sqdist(v1[0], v1[1], v1[2], v2[0], v2[1], v2[2]) < 1.0f;
     };
+    auto makeVec = [](float x, float y, float z) -> array<float, 3> {
+        array<float, 3> vec;
+        vec[0] = x;
+        vec[1] = y;
+        vec[2] = z;
+        return vec;
+    };
 
-    std::array<float, 3> mean, newMean;
+    // A grid is used for finding neighboring 3D points.
+    // Each 3D point is inserted in a grid cell and its 26 neighboring cells.
+    // The smallest dimension of a cell must be <= SpatialBandWidth, which is used as the size of the window function.
+    int gridSizeX(ceil(float(MXSize()) / SpatialBandWidth)),
+        gridSizeY(ceil(float(MYSize()) / SpatialBandWidth)),
+        gridSizeZ(ceil(255.0f * RangeBandWidth / SpatialBandWidth));
+    float cellSizeX(float(MXSize()) / gridSizeX),
+          cellSizeY(float(MYSize()) / gridSizeY),
+          cellSizeZ(255.0f * RangeBandWidth / gridSizeZ);
+    vector<vector<vector<cell_t>>> grid(gridSizeX, vector<vector<cell_t>>(gridSizeY, vector<cell_t>(gridSizeZ)));
+
+    // Lambda function for finding the grid cell containing the 3D position
+    auto getGridPos =
+            [cellSizeX, cellSizeY, cellSizeZ, gridSizeX, gridSizeY, gridSizeZ](array<float, 3> pos) -> array<int, 3> {
+        array<int, 3> grid_pos;
+        grid_pos[0] = std::min(int(pos[0] / cellSizeX), gridSizeX-1);
+        grid_pos[1] = std::min(int(pos[1] / cellSizeY), gridSizeY-1);
+        grid_pos[2] = std::min(int(pos[2] / cellSizeZ), gridSizeZ-1);
+        return grid_pos;
+    };
+
+    // Insert each 3D point in the grid
+    for (int x = 0; x < MXSize(); ++x)
+    {
+        for (int y = 0; y < MYSize(); ++y)
+        {
+            float color = MGetColor(x, y) * RangeBandWidth;
+            int xCell(x / cellSizeX), yCell(y / cellSizeY), zCell(color / cellSizeZ);
+
+            // Insert in neighboring cells
+            for (int nx = xCell-1; nx <= xCell+1; ++nx)
+            {
+                for (int ny = yCell-1; ny <= yCell+1; ++ny)
+                {
+                    for (int nz = zCell-1; nz <= zCell+1; ++nz)
+                    {
+                        if (nx < 0 || ny < 0 || nz < 0 || nx >= gridSizeX || ny >= gridSizeY || nz >= gridSizeZ)
+                            continue;
+                        grid[nx][ny][nz].push_back(makeVec(x, y, color));
+                    }
+                }
+            }
+        }
+    }
+
+    array<float, 3> mean, newMean;
     MImage Y(MXSize(), MYSize(), 1);
 
     // For each pixel, start at the position of the pixel and move to the nearest density maximum
@@ -346,20 +405,22 @@ void MImage::MMeanShift(float SpatialBandWidth, float RangeBandWidth, float tole
                 // Move the position to the mean of the window
                 newMean = {0.0f, 0.0f, 0.0f};
                 int num(0);
-                for (int u = 0; u < MXSize(); ++u)
+
+                // Get all points that could be inside the window
+                array<int, 3> grid_pos = getGridPos(mean);
+                cell_t& gridCell = grid[grid_pos[0]][grid_pos[1]][grid_pos[2]];
+                for (auto p : gridCell)
                 {
-                    for (int v = 0; v < MYSize(); ++v)
+                    int u(p[0]), v(p[1]); // X,Y position of the neighbor
+                    float uvColor = p[2]; // Z position of the neighbor
+                    float epanechnikov = sqdist(mean[0], mean[1], mean[2], u, v, uvColor) / SQR(SpatialBandWidth);
+                    if (epanechnikov < 1.0f)
                     {
-                        float uvColor = MGetColor(u, v) * RangeBandWidth;
-                        float epanechnikov = sqdist(mean[0], mean[1], mean[2], u, v, uvColor) / SQR(SpatialBandWidth);
-                        if (epanechnikov < 1.0f)
-                        {
-                            vec3Add(newMean, u, v, uvColor);
-                            num += 1;
-                        }
+                        vec3Add(newMean, u, v, uvColor);
+                        num += 1;
                     }
                 }
-                vec3Div(newMean, num);
+                vec3Div(newMean, num); // newMean contains the total, divide by num and we get the mean
                 if (vec3Equal(mean, newMean))
                     break;
                 mean = newMean;
