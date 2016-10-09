@@ -476,6 +476,17 @@ void MImage::MSASegmentation(float beta,float Tmin, float Tmax, float coolingRat
 }
 
 
+/*
+ * Smooth cost function for use with GCoptimizationGridGraph::setSmoothCost(SmoothCostFnExtra, void*)
+*/
+double neighbourCost(int s1, int s2, int l1, int l2, void* data)
+{
+    float* floatData = (float*)data;
+    float sigma = floatData[0];
+    float* pixData = floatData + 1;
+
+    return (double)expf(-0.5 * powf((pixData[s1] - pixData[s2]) / sigma, 2.0f));
+}
 
 /*
 	Interactive graph cut segmentation
@@ -488,8 +499,57 @@ void MImage::MSASegmentation(float beta,float Tmin, float Tmax, float coolingRat
 	The resulting label Field is copied in the current image (this->MImgBuf)
 */
 void MImage::MInteractiveGraphCutSegmentation(MImage &mask, float sigma)
-{	
+{
+    GCoptimizationGridGraph gc(MXSize(), MYSize(), 2);
+    float lambda(1.0f);
 
+    // TODO faire les moyennes
+    float background = 0.0f; // label 0
+    float foreground = 255.0f; // label 1
+
+    // Make 1D vector
+    int length = MXSize() * MYSize();
+    float* data = new float[length + 1];
+    data[0] = sigma;
+    float* pixelData = data + 1;
+    int pInd = 0;
+    for (int x = 0; x < MXSize(); ++x)
+    {
+        for (int y = 0; y < MYSize(); ++y)
+        {
+            pixelData[pInd++] = MGetColor(x, y);
+        }
+    }
+
+    // Data cost
+    for (int i = 0; i < length; ++i)
+    {
+        gc.setDataCost(i, 0, lambda * powf(pixelData[i] - background, 2.0f));
+        gc.setDataCost(i, 1, lambda * powf(pixelData[i] - foreground, 2.0f));
+    }
+
+    // Smooth cost
+    for (int i = 0; i < length; ++i)
+    {
+        gc.setSmoothCost(neighbourCost, data);
+    }
+
+    // Run the algorithm
+    gc.expansion(2);
+
+    // Get results
+    pInd = 0;
+    for (int x = 0; x < MXSize(); ++x)
+    {
+        for (int y = 0; y < MYSize(); ++y)
+        {
+            MSetColor(gc.whatLabel(pInd++), x, y);
+        }
+    }
+
+    MRescale();
+
+    delete[] data;
 }
 
 
