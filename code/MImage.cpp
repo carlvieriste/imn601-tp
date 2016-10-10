@@ -415,7 +415,7 @@ void MImage::MOptimalThresholding(float *means, float *stddev, float *apriori, i
 
 	The resulting label Field is copied in the current image (this->MImgBuf)
 */
-void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int nbClasses)
+void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori,int nbClasses)
 {
     MImage Y(MXSize(), MYSize(), 1);
     std::vector<int> classSize(nbClasses);
@@ -731,6 +731,57 @@ void MImage::MExpectationMaximization(float *means,float *stddev,float *apriori,
 */
 void MImage::MICMSegmentation(float beta, int nbClasses)
 {
+	bool ValueChanged;
+	MImage Yprev;
+	MImage Y = *this;
+	float* means = new float[nbClasses];
+	float* stdev = new float[nbClasses];
+	float* apriori = new float[nbClasses];
+	Y.MKMeansSegmentation(means, stdev, apriori, nbClasses);
+	do
+	{
+		ValueChanged = false;
+		Yprev = Y;
+		for (int i = 0; i < MXSize(); i++)
+		{
+			for (int j = 0; j < MYSize(); j++)
+			{
+				int NearestClass = -1;
+				float min = std::numeric_limits<float>::infinity();
+				for (int c = 0; c < nbClasses; c++)
+				{
+                    float Uc = -log(exp(-pow(MGetColor(i, j) - means[c], 2.0f) / (2.0*pow(stdev[c], 2.0))) / (stdev[c] * sqrt(2.0f*M_PI)));
+					float Wc = 0.0f;
+					for (int m = -1; m <= 1; m++)
+					{
+						for (int n = -1; n <= 1; n++)
+						{
+							if (i + m >= 0 && i + m < MXS && j + n >= 0 && j + n < MYS)
+							{
+								Wc += Y.MGetColor(i + m, j + n) != c ? 1 : 0;
+							}
+						}
+					}
+					Wc *= beta;
+
+					if (Uc + Wc < min)
+					{
+						min = Uc + Wc;
+						NearestClass = c;
+					}
+				}
+
+				ValueChanged |= (fabsf(NearestClass - Y.MGetColor(i, j)) > 1e-5);
+				Y.MSetColor(NearestClass, i, j);
+			}
+		}
+	} while (ValueChanged);
+
+	operator=(Y);
+
+	delete means;
+	delete stdev;
+	delete apriori;
 }
 
 /*
