@@ -524,8 +524,6 @@ void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori, int 
 */
 void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,float beta, int nbClasses)
 {
-    const float BETA = 1.0f;
-
     std::vector<MImage> Y(nbClasses, MImage(MXSize(), MYSize(), 1));
     std::vector<int> classSize(nbClasses);
     MImage bestClassForSite(MXSize(), MYSize(), 1);
@@ -541,6 +539,9 @@ void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,f
     {
         iter++;
 
+        // Reset size of each class
+        std::fill(classSize.begin(), classSize.end(), 0);
+
         // Set probabilities
         for (int x = 0; x < MXSize(); x++)
         {
@@ -552,7 +553,7 @@ void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,f
                 float denom(0.0f);
                 for (int c = 0; c < nbClasses; c++)
                 {
-                    float d_r = BETA * fabsf(pixelValue - means[c]);
+                    float d_r = beta * fabsf(pixelValue - means[c]);
                     float term = expf(-d_r);
                     denom += term;
                     exponentialTerms[c] = term;
@@ -577,6 +578,7 @@ void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,f
                     }
                 }
                 bestClassForSite.MSetColor(float(bestClass), x, y);
+                classSize[bestClass] += 1;
             }
         }
 
@@ -597,7 +599,7 @@ void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,f
                 }
             }
 
-            float newMean = numer / denom;
+            float newMean = numer / denom; // weighted average = (weighted sum) / (sum of weights)
             if (fabsf(newMean - means[c]) > 0.01)
                 meansHaveChanged = true;
             means[c] = newMean;
@@ -605,6 +607,27 @@ void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,f
     }
 
     printf("Iter: %i", iter);
+
+    // Compute variance
+    std::fill(stddev, stddev + nbClasses, 0.0f);
+    for (int x = 0; x < MXSize(); x++)
+    {
+        for (int y = 0; y < MYSize(); y++)
+        {
+            int c = int(bestClassForSite.MGetColor(x, y));
+            stddev[c] += pow(MGetColor(x, y) - means[c], 2.0f);
+        }
+    }
+
+    float totalPixels = MXSize() * MYSize();
+
+    // Get standard deviation and 'a priori'
+    for (int c = 0; c < nbClasses; c++)
+    {
+        stddev[c] = sqrtf(stddev[c] / classSize[c]);
+
+        apriori[c] = float(classSize[c]) / totalPixels;
+    }
 
     // Copy label field in this image
     operator=(bestClassForSite);
