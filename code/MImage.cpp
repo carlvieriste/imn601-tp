@@ -505,7 +505,7 @@ void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori,int n
         apriori[c] = float(classSize[c]) / totalPixels;
     }
 
-    printf("Iter: %i", iter);
+    printf("Iter: %i\n", iter);
 
     // Copy label field to this image
     operator=(Y);
@@ -719,6 +719,9 @@ void MImage::MExpectationMaximization(float *means,float *stddev,float *apriori,
         }
 
     } // End of while
+
+    // NOTE: The label field is not copied in the current image.
+    // The label field is computed using Optimal Thresholding. (See tp1B.cpp)
 }
 
 /*
@@ -797,6 +800,104 @@ void MImage::MICMSegmentation(float beta, int nbClasses)
 */
 void MImage::MSASegmentation(float beta,float Tmin, float Tmax, float coolingRate, int nbClasses)
 {
+    const float NORM_CONSTANT = 1.0f / sqrtf(2.0f * M_PI);
+    const int xNeigh[] = {-1,  0,  1, -1, 1, -1, 0, 1};
+    const int yNeigh[] = {-1, -1, -1,  0, 0,  1, 1, 1};
+    auto are_different = [](float a, float b, float eps) -> bool{
+        return fabsf(a - b) > eps;
+    };
+
+    float* means = new float[nbClasses];
+    float* stddev = new float[nbClasses];
+    float* apriori = new float[nbClasses]; // Will not be used, we give it to the KMeans function
+    float T = Tmax;
+    double* P = new double[nbClasses];
+
+    // Initialize label field and parameters
+    MImage Y = *this;
+    Y.MKMeansSegmentation(means, stddev, apriori, nbClasses);
+
+    MImage debug = Y;
+    debug.MRescale();
+    debug.MSaveImage("SAInitKMeans.pgm", PGM_ASCII);
+
+    for (int x = 0; x < MXSize(); x++)
+    {
+        for (int y = 0; y < MYSize(); y++)
+        {
+            Y.MSetColor(roundf(float(std::rand()) / RAND_MAX * (nbClasses - 1)), x, y);
+        }
+    }
+
+    int idebug(0);
+    do
+    {
+        for (int x = 0; x < MXSize(); x++)
+        {
+            for (int y = 0; y < MYSize(); y++)
+            {
+                float x_s = MGetColor(x, y);
+
+                // 1. Compute probability for each class
+                double sumOfP(0.0f);
+                for (int c = 0; c < nbClasses; c++)
+                {
+                    float U_c = 0.5f * powf((x_s - means[c]) / stddev[c], 2.0f);
+
+                    int diffNeighbors(0);
+                    for(int n = 0; n < 8; n++) // 8 neighbors
+                    {
+                        int xn = x + xNeigh[n];
+                        int yn = y + yNeigh[n];
+                        if (xn < 0 || yn < 0 || xn >= MXSize() || yn >= MYSize())
+                            continue;
+                        if (are_different(Y.MGetColor(xn, yn), Y.MGetColor(x, y), 0.5f)) // We compare "integers"
+                            diffNeighbors += 1;
+                    }
+                    float W_c = beta * diffNeighbors;
+
+                    P[c] = exp(-1.0f * (U_c + W_c) / T);
+                    sumOfP += P[c];
+                }
+
+                // 2. Choose a class
+                double p = double(std::rand()) / RAND_MAX; // Random number in [0,1]
+                double sumOfPreviousP(0.0f);
+
+                bool showDebug = false; // = idebug % 1000000 == 0;
+                if(showDebug) std::cout << std::endl;
+
+                int c(0);
+                for (; c < nbClasses; c++)
+                {
+                    if(showDebug) std::cout << P[c] << " ";
+
+                    P[c] /= sumOfP; // Normalize P's so that their sum is 1
+
+                    if(showDebug) std::cout << P[c] << " " << sumOfPreviousP << " " << P[c] + sumOfPreviousP << " " << p << std::endl;
+
+                    if (p < sumOfPreviousP + P[c])
+                    {
+                        break;
+                    }
+                    sumOfPreviousP += P[c];
+                }
+                c = std::min(c, nbClasses-1);
+                Y.MSetColor(float(c), x, y);
+
+                idebug++;
+            }
+        }
+        T = T * coolingRate;
+    } while (T > Tmin);
+
+    // Copy label field in the current instance
+    operator=(Y);
+
+    delete[] means;
+    delete[] stddev;
+    delete[] apriori;
+    delete[] P;
 }
 
 
