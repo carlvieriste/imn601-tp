@@ -417,6 +417,100 @@ void MImage::MOptimalThresholding(float *means, float *stddev, float *apriori, i
 */
 void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori,int nbClasses)
 {
+    MImage Y(MXSize(), MYSize(), 1);
+    std::vector<int> classSize(nbClasses);
+    float* oldMeans = new float[nbClasses];
+
+    // Init average in a uniform manner (instead of random)
+    for (int c = 0; c < nbClasses; c++)
+        means[c] = float(c) / nbClasses * 255.0f;
+
+    bool meansHaveChanged = true;
+    int iter(0);
+    while (meansHaveChanged)
+    {
+        iter++;
+
+        // Set labels
+        for (int x = 0; x < MXSize(); x++) {
+            for (int y = 0; y < MYSize(); y++) {
+                int closestClass = -1;
+                float smallestDist = std::numeric_limits<float>::infinity();
+
+                // Check against all averages
+                for (int c = 0; c < nbClasses; c++) {
+                    float dist = fabsf(MGetColor(x, y) - means[c]);
+                    if (dist < smallestDist) {
+                        closestClass = c;
+                        smallestDist = dist;
+                    }
+                }
+
+                Y.MSetColor(float(closestClass), x, y);
+            }
+        }
+
+        // Keep actual means for comparison
+        memcpy(oldMeans, means, nbClasses * sizeof(float));
+
+        // Reset means
+        for (int c = 0; c < nbClasses; c++) {
+            means[c] = 0.0f;
+            classSize[c] = 0;
+        }
+
+        // Compute means
+        for (int x = 0; x < MXSize(); x++) {
+            for (int y = 0; y < MYSize(); y++) {
+                int label = int(Y.MGetColor(x, y));
+                means[label] += MGetColor(x, y);
+                classSize[label] += 1;
+            }
+        }
+        for (int c = 0; c < nbClasses; c++) {
+            means[c] /= (classSize[c] == 0 ? 1 : classSize[c]);
+        }
+
+        // Check if means have changed
+        meansHaveChanged = false;
+        for (int c = 0; c < nbClasses; c++)
+        {
+            float dist = fabsf(means[c] - oldMeans[c]);
+            if (dist > 0.01f)
+            {
+                meansHaveChanged = true;
+            }
+        }
+
+    } // End of while
+
+    // Compute variance
+    std::fill(stddev, stddev + nbClasses, 0.0f);
+    for (int x = 0; x < MXSize(); x++)
+    {
+        for (int y = 0; y < MYSize(); y++)
+        {
+            int c = int(Y.MGetColor(x, y));
+            stddev[c] += pow(MGetColor(x, y) - means[c], 2.0f);
+        }
+    }
+
+    float totalPixels = MXSize() * MYSize();
+
+    // Get standard deviation and 'a priori'
+    for (int c = 0; c < nbClasses; c++)
+    {
+        stddev[c] = sqrtf(stddev[c] / classSize[c]);
+
+        apriori[c] = float(classSize[c]) / totalPixels;
+    }
+
+    printf("Iter: %i", iter);
+
+    // Copy label field to this image
+    operator=(Y);
+
+    delete[] oldMeans;
 }
 
 
@@ -430,6 +524,115 @@ void MImage::MKMeansSegmentation(float *means,float *stddev,float *apriori,int n
 */
 void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,float beta, int nbClasses)
 {
+    std::vector<MImage> Y(nbClasses, MImage(MXSize(), MYSize(), 1));
+    std::vector<int> classSize(nbClasses);
+    MImage bestClassForSite(MXSize(), MYSize(), 1);
+    float* exponentialTerms = new float[nbClasses];
+
+    // Init average in a uniform manner (instead of random)
+    for (int c = 0; c < nbClasses; c++)
+        means[c] = float(c) / nbClasses * 255.0f;
+
+    bool meansHaveChanged = true;
+    int iter(0);
+    while (meansHaveChanged)
+    {
+        iter++;
+
+        // Reset size of each class
+        std::fill(classSize.begin(), classSize.end(), 0);
+
+        // Set probabilities
+        for (int x = 0; x < MXSize(); x++)
+        {
+            for (int y = 0; y < MYSize(); y++)
+            {
+                float pixelValue = MGetColor(x, y);
+
+                // Compute all exponential terms and the denominator
+                float denom(0.0f);
+                for (int c = 0; c < nbClasses; c++)
+                {
+                    float d_r = beta * fabsf(pixelValue - means[c]);
+                    float term = expf(-d_r);
+                    denom += term;
+                    exponentialTerms[c] = term;
+                }
+
+                // Compute probability of being in class c for pixel (x,y)
+                // Update label field using highest probability class
+                float highestProb = 0.0f;
+                int bestClass = 0;
+                for (int c = 0; c < nbClasses; c++)
+                {
+                    float numer = exponentialTerms[c];
+
+                    float P = numer / denom;
+
+                    Y[c].MSetColor(P, x, y);
+
+                    if (P > highestProb)
+                    {
+                        highestProb = P;
+                        bestClass = c;
+                    }
+                }
+                bestClassForSite.MSetColor(float(bestClass), x, y);
+                classSize[bestClass] += 1;
+            }
+        }
+
+        // Compute new means
+        meansHaveChanged = false;
+        for (int c = 0; c < nbClasses; c++)
+        {
+            float numer(0.0f), denom(0.0f);
+            for (int x = 0; x < MXSize(); x++)
+            {
+                for (int y = 0; y < MYSize(); y++)
+                {
+                    // Get probability that (x,y) belongs to class c
+                    float P = Y[c].MGetColor(x, y);
+
+                    numer += P * MGetColor(x, y);
+                    denom += P;
+                }
+            }
+
+            float newMean = numer / denom; // weighted average = (weighted sum) / (sum of weights)
+            if (fabsf(newMean - means[c]) > 0.01)
+                meansHaveChanged = true;
+            means[c] = newMean;
+        }
+    }
+
+    printf("Iter: %i", iter);
+
+    // Compute variance
+    std::fill(stddev, stddev + nbClasses, 0.0f);
+    for (int x = 0; x < MXSize(); x++)
+    {
+        for (int y = 0; y < MYSize(); y++)
+        {
+            int c = int(bestClassForSite.MGetColor(x, y));
+            stddev[c] += pow(MGetColor(x, y) - means[c], 2.0f);
+        }
+    }
+
+    float totalPixels = MXSize() * MYSize();
+
+    // Get standard deviation and 'a priori'
+    for (int c = 0; c < nbClasses; c++)
+    {
+        stddev[c] = sqrtf(stddev[c] / classSize[c]);
+
+        apriori[c] = float(classSize[c]) / totalPixels;
+    }
+
+    // Copy label field in this image
+    operator=(bestClassForSite);
+
+    delete[] exponentialTerms;
 }
 
 
@@ -445,6 +648,77 @@ void MImage::MSoftKMeansSegmentation(float *means,float *stddev,float *apriori,f
 */
 void MImage::MExpectationMaximization(float *means,float *stddev,float *apriori, int nbClasses)
 {
+    const float NORM_CONSTANT = 1.0f / sqrtf(2.0f * M_PI);
+    const float ONE_OVER_NUM_SITES = 1.0f / (MXSize() * MYSize());
+    std::vector<float> gaussianProbability(nbClasses);
+    std::vector<MImage> P(nbClasses, MImage(MXSize(), MYSize(), 1)); // Contains P(c | x_s)
+    auto are_different = [](float a, float b, float eps) -> bool{
+        return fabsf(a - b) > eps;
+    };
+
+    bool paramsHaveChanged = true;
+    while (paramsHaveChanged)
+    {
+        // 1. Compute P(c | x_s, theta) for all pixels and all classes
+        for (int x = 0; x < MXSize(); x++)
+        {
+            for (int y = 0; y < MYSize(); y++)
+            {
+                float x_s = MGetColor(x, y);
+
+                // 1.a Compute P(x_s | i, theta_i) * P(i) for each class i (and sum them all)
+                float probSum(0.0f);
+                for (int c = 0; c < nbClasses; c++)
+                {
+                    float conditionalProb = NORM_CONSTANT / stddev[c]
+                                          * expf(-1.0f * powf(x_s - means[c], 2.0f) / (2.0f * powf(stddev[c], 2.0f)));
+                    probSum += gaussianProbability[c] = conditionalProb * apriori[c];
+                }
+
+                // 2.a Compute P(c | x_s, theta) for all classes
+                for (int c = 0; c < nbClasses; c++)
+                {
+                    P[c].MSetColor(gaussianProbability[c] / probSum, x, y);
+                }
+            }
+        }
+
+        // 2. Compute gaussian parameters
+        paramsHaveChanged = false;
+        for (int c = 0; c < nbClasses; c++)
+        {
+            float meanNumer(0.0f), varianceNumer(0.0f), sumOfCondProbs(0.0f);
+            for (int x = 0; x < MXSize(); x++)
+            {
+                for (int y = 0; y < MYSize(); y++)
+                {
+                    float x_s = MGetColor(x, y);
+                    float conditionalProb = P[c].MGetColor(x, y);
+
+                    sumOfCondProbs += conditionalProb; // This is the denom for both the mean and the variance
+
+                    meanNumer += conditionalProb * x_s;
+                    varianceNumer += conditionalProb * powf(x_s - means[c], 2.0f);
+                }
+            }
+
+            float newMean = meanNumer / sumOfCondProbs;
+            float newStddev = sqrtf(varianceNumer / sumOfCondProbs);
+            float newApriori = ONE_OVER_NUM_SITES * sumOfCondProbs;
+
+            if (   are_different(newMean, means[c], 0.1f)
+                || are_different(newStddev, stddev[c], 0.1f)
+                || are_different(newApriori, apriori[c], 0.1f))
+            {
+                paramsHaveChanged = true;
+            }
+
+            means[c] = newMean;
+            stddev[c] = newStddev;
+            apriori[c] = newApriori;
+        }
+
+    } // End of while
 }
 
 /*
