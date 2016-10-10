@@ -40,7 +40,7 @@ int main(int argc, char **argv)
 	printf("\n Stddev : "); for(int i=0;i<nbClasses;i++) printf(" %f",stddev[i]);
 	printf("\n Prior : "); for(int i=0;i<nbClasses;i++) printf(" %f",apriori[i]);
 	img2.MRescale();
-	img2.MSaveImage("outKMeans.pgm",PGM_RAW);
+	img2.MSaveImage("outKMeans.pgm",PGM_ASCII);
 	
 	/*****     Optimal Thresholding               ************************/ 
 	img2 = img1;
