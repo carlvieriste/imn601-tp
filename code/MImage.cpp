@@ -1019,6 +1019,17 @@ void MImage::MSASegmentation(float beta,float Tmin, float Tmax, float coolingRat
 }
 
 
+/*
+ * Smooth cost function for use with GCoptimizationGridGraph::setSmoothCost(SmoothCostFnExtra, void*)
+*/
+double SmoothCost(int s1, int s2, int l1, int l2, void *data)
+{
+    float* floatData = (float*)data;
+    float sigma = floatData[0];
+    float* pixData = floatData + 1;
+
+    return double(1000.0f * fabsf(l1 - l2) * expf(-0.5 * powf((pixData[s1] - pixData[s2]) / sigma, 2.0f)));
+}
 
 /*
 	Interactive graph cut segmentation
@@ -1031,8 +1042,95 @@ void MImage::MSASegmentation(float beta,float Tmin, float Tmax, float coolingRat
 	The resulting label Field is copied in the current image (this->MImgBuf)
 */
 void MImage::MInteractiveGraphCutSegmentation(MImage &mask, float sigma)
-{	
+{
+    GCoptimizationGridGraph gc(MXSize(), MYSize(), 2);
+    float lambda(0.001f);
 
+    // Get means for background and foreground
+    float foreSum(0.0f), backSum(0.0f);
+    int foreCount(0), backCount(0);
+    for (int x = 0; x < MXSize(); ++x)
+    {
+        for (int y = 0; y < MYSize(); ++y)
+        {
+            if (mask.MGetColor(x, y) > 250.0f)
+            {
+                // Foreground selection
+                foreSum += MGetColor(x, y);
+                foreCount++;
+            }
+            else if (mask.MGetColor(x, y) > 10.0f)
+            {
+                // Background selection
+                backSum += MGetColor(x, y);
+                backCount++;
+            }
+        }
+    }
+    float foreground = foreSum / foreCount;
+    float background = backSum / backCount;
+
+    // Make 1D vector
+    int length = MXSize() * MYSize();
+    float* data = new float[length + 1];
+    data[0] = sigma;
+    float* pixelData = data + 1;
+    int pInd = 0;
+    for (int x = 0; x < MXSize(); ++x)
+    {
+        for (int y = 0; y < MYSize(); ++y)
+        {
+            pixelData[pInd++] = MGetColor(x, y);
+        }
+    }
+
+    // Data cost
+    const float highCost = 1e7;
+    for (int x = 0; x < MXSize(); ++x)
+    {
+        for (int y = 0; y < MYSize(); ++y)
+        {
+            int pixInd = x * MYSize() + y;
+
+            // Foreground: 1, Background: 0
+            if (mask.MGetColor(x, y) > 250.0f)
+            {
+                // Foreground selection
+                gc.setDataCost(pixInd, 0, highCost);
+                gc.setDataCost(pixInd, 1, 0.0f); // No cost for choosing foreground
+            }
+            else if (mask.MGetColor(x, y) > 10.0f)
+            {
+                // Background selection
+                gc.setDataCost(pixInd, 0, 0.0f); // No cost for choosing background
+                gc.setDataCost(pixInd, 1, highCost);
+            }
+            else
+            {
+                // Not selected
+                gc.setDataCost(pixInd, 0, lambda * powf(MGetColor(x, y) - background, 2.0f));
+                gc.setDataCost(pixInd, 1, lambda * powf(MGetColor(x, y) - foreground, 2.0f));
+            }
+        }
+    }
+
+    // Smooth cost
+    gc.setSmoothCost(SmoothCost, data);
+
+    // Run the algorithm
+    gc.expansion(6);
+
+    // Get results
+    pInd = 0;
+    for (int x = 0; x < MXSize(); ++x)
+    {
+        for (int y = 0; y < MYSize(); ++y)
+        {
+            MSetColor(gc.whatLabel(pInd++), x, y);
+        }
+    }
+
+    MRescale();
 }
 
 
