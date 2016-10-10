@@ -565,8 +565,8 @@ void MImage::MInteractiveGraphCutSegmentation(MImage &mask, float sigma)
             else
             {
                 // Not selected
-                gc.setDataCost(pixInd, 0, lambda * powf(MGetColor(x, y) - background, 2.0f));
-                gc.setDataCost(pixInd, 1, lambda * powf(MGetColor(x, y) - foreground, 2.0f));
+                gc.setDataCost(pixInd, 0, highCost);
+                gc.setDataCost(pixInd, 1, highCost);
             }
         }
     }
